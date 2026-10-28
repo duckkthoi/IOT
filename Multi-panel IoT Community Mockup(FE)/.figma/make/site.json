@@ -1,0 +1,10 @@
+{
+  "description": "Visualize and manage IoT sensor data with interactive dashboards, detailed logs, and personal profiles in a sleek, glassmorphism-styled Vietnamese interface.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
