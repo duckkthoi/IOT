@@ -52,42 +52,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.glass {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: var(--radius);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04);
-}
-
-[data-theme='dark'] .glass {
-  background: rgba(13,45,60,0.52);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(0,229,255,0.14);
-}
-
-.glass-dark {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: var(--radius);
-}
-
-[data-theme='dark'] .glass-dark {
-  background: rgba(10,20,30,0.6);
-  border: 1px solid rgba(0,229,255,0.1);
-}
-
-.glass-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-}
-
-[data-theme='dark'] .glass-card {
-  background: rgba(13,40,55,0.5);
-  border: 1px solid rgba(0,229,255,0.14);
-}
-
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -99,12 +63,14 @@ body {
   background: rgba(0,229,255,0.3);
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 @keyframes pulse-slow {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
-
-.font-mono { font-family: 'JetBrains Mono', monospace; }
 
 /* Custom Sleek Dropdown Selects (Light mode default) */
 select {

@@ -1,5 +1,4 @@
 import { NavLink } from "react-router"
-import { AreaChart, Area, YAxis, ResponsiveContainer } from "recharts"
 import { useAppContext } from "../context/AppContext"
 
 export const CYAN = "#00e5ff"
@@ -7,7 +6,8 @@ export const CORAL = "#ff6b6b"
 export const YELLOW = "#ffd166"
 export const VIOLET = "#b07aff"
 export const GREEN = "#27c93f"
-export const TEAL_HDR = "#0d3d3d"
+export const MONO = '"JetBrains Mono",monospace'
+const TEAL_HDR = "#0d3d3d"
 export const GLASS = "rgba(13,45,60,0.52)"
 export const GLASS_BDR = "rgba(0,229,255,0.14)"
 
@@ -321,229 +321,161 @@ export function Sidebar() {
   )
 }
 
-/* ── sparkline ───────────────────────────────────────────────── */
-export function Spark({
-  data,
-  color,
-  domain,
+/* ── page layout: header + sidebar + vùng nội dung ───────────── */
+export function PageLayout({
+  title,
+  contentStyle,
+  children,
 }: {
-  data: { v: number }[]
-  color: string
-  domain?: [number, number]
+  title: string
+  contentStyle?: React.CSSProperties
+  children: React.ReactNode
 }) {
-  const id = `g${color.replace(/[^a-z0-9]/gi, "")}`
-  return (
-    <ResponsiveContainer width="100%" height={48}>
-      <AreaChart data={data} margin={{ top: 5, right: 3, bottom: 2, left: 3 }}>
-        <defs>
-          <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="10%" stopColor={color} stopOpacity={0.42} />
-            <stop offset="95%" stopColor={color} stopOpacity={0.03} />
-          </linearGradient>
-        </defs>
-        <YAxis domain={domain ?? [0, 'auto']} hide />
-        <Area
-          type="monotone"
-          dataKey="v"
-          stroke={color}
-          strokeWidth={2.2}
-          fill={`url(#${id})`}
-          dot={(dotProps: any) => {
-            if (dotProps.index === data.length - 1) {
-              return (
-                <circle
-                  key={`dot-${dotProps.index}`}
-                  cx={dotProps.cx}
-                  cy={dotProps.cy}
-                  r={3.5}
-                  fill="#ffffff"
-                  stroke={color}
-                  strokeWidth={2.2}
-                />
-              )
-            }
-            return null
-          }}
-          isAnimationActive={false}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
-  )
-}
-
-/* ── pagination ──────────────────────────────────────────────── */
-export interface PaginationProps {
-  page: number
-  totalPages: number
-  totalItems: number
-  limit?: number
-  onPageChange: (newPage: number) => void
-}
-
-export function Pagination({
-  page,
-  totalPages,
-  totalItems,
-  limit = 25,
-  onPageChange,
-}: PaginationProps) {
   const { theme } = useAppContext()
   const isLight = theme === 'light'
-  if (totalItems === 0) return null
-
-  // Generate page list with ellipsis
-  const pages: (number | string)[] = []
-  if (totalPages <= 7) {
-    for (let i = 1; i <= totalPages; i++) pages.push(i)
-  } else {
-    pages.push(1)
-    if (page > 3) pages.push('…')
-
-    const start = Math.max(2, page - 1)
-    const end = Math.min(totalPages - 1, page + 1)
-    for (let i = start; i <= end; i++) {
-      pages.push(i)
-    }
-
-    if (page < totalPages - 2) pages.push('…')
-    pages.push(totalPages)
-  }
-
-  const startRecord = (page - 1) * limit + 1
-  const endRecord = Math.min(page * limit, totalItems)
 
   return (
     <div
       style={{
+        minHeight: '100vh',
+        background: isLight ? '#f1f5f9' : '#060d14',
         display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: 12,
-        paddingTop: 6,
-        flexWrap: 'wrap',
+        flexDirection: 'column',
       }}
     >
-      <div style={{ fontSize: 11, color: isLight ? '#64748b' : 'rgba(180,210,220,0.5)', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span>
-          Hiển thị <strong style={{ color: isLight ? '#0284c7' : CYAN }}>{startRecord} - {endRecord}</strong> / <strong style={{ color: isLight ? '#0f172a' : '#fff' }}>{totalItems}</strong> bản ghi
+      <AppHeader title={title} />
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <Sidebar />
+        <div style={{ flex: 1, overflow: 'auto', ...contentStyle }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
+/* ── pagination footer cho bảng ──────────────────────────────── */
+// Tối đa 7 ô: 1 … 4 5 6 … 20
+function getPaginationRange(page: number, total: number): (number | '...')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  if (page <= 4) return [1, 2, 3, 4, 5, '...', total]
+  if (page >= total - 3) return [1, '...', total - 4, total - 3, total - 2, total - 1, total]
+  return [1, '...', page - 1, page, page + 1, '...', total]
+}
+
+export function TablePagination({
+  page,
+  totalPages,
+  total,
+  limit,
+  limitOptions,
+  onPageChange,
+  onLimitChange,
+}: {
+  page: number
+  totalPages: number
+  total: number
+  limit: number
+  limitOptions: number[]
+  onPageChange: (page: number) => void
+  onLimitChange: (limit: number) => void
+}) {
+  const { theme } = useAppContext()
+  const isLight = theme === 'light'
+  const textMain = isLight ? '#0f172a' : '#f1f5f9'
+  const textMuted = isLight ? '#64748b' : 'rgba(180,210,220,0.5)'
+
+  const startEntry = total === 0 ? 0 : (page - 1) * limit + 1
+  const endEntry = Math.min(total, page * limit)
+
+  const navBtn = (disabled: boolean): React.CSSProperties => ({
+    padding: '5px 10px',
+    borderRadius: 6,
+    border: 'none',
+    background: 'transparent',
+    color: disabled ? (isLight ? '#cbd5e1' : 'rgba(255,255,255,0.18)') : isLight ? '#475569' : '#cbd5e1',
+    fontSize: 12,
+    fontWeight: 500,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontFamily: 'Inter,sans-serif',
+  })
+
+  return (
+    <div
+      style={{
+        padding: '14px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 12,
+        borderTop: `1px solid ${isLight ? '#e2e8f0' : 'rgba(255,255,255,0.08)'}`,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: textMuted }}>
+          Hiển thị <strong style={{ color: textMain }}>{startEntry}</strong> đến{' '}
+          <strong style={{ color: textMain }}>{endEntry}</strong> trong tổng số{' '}
+          <strong style={{ color: textMain }}>{total}</strong> bản ghi
         </span>
-        <span style={{ color: isLight ? '#cbd5e1' : 'rgba(255,255,255,0.2)' }}>•</span>
-        <span style={{ color: isLight ? '#64748b' : 'rgba(180,210,220,0.4)' }}>Trang {page} / {totalPages}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: textMain }}>Số dòng / trang:</span>
+          <select
+            value={limit}
+            onChange={(e) => onLimitChange(Number(e.target.value))}
+            style={{
+              padding: '4px 24px 4px 10px',
+              borderRadius: 16,
+              border: `1px solid ${isLight ? '#cbd5e1' : 'rgba(255,255,255,0.18)'}`,
+              background: isLight ? '#ffffff' : '#0b1d2d',
+              color: textMain,
+              fontSize: 12,
+              fontWeight: 500,
+              fontFamily: 'Inter,sans-serif',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          >
+            {limitOptions.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        {/* Previous */}
-        <button
-          onClick={() => page > 1 && onPageChange(page - 1)}
-          disabled={page <= 1}
-          title="Trang trước"
-          style={{
-            minWidth: 28,
-            height: 28,
-            borderRadius: 7,
-            cursor: page <= 1 ? 'not-allowed' : 'pointer',
-            padding: '0 8px',
-            fontSize: 11,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontFamily: 'Inter,sans-serif',
-            background: isLight ? '#ffffff' : 'rgba(255,255,255,0.04)',
-            border: isLight ? '1px solid #cbd5e1' : '1px solid rgba(255,255,255,0.09)',
-            color: page <= 1 ? (isLight ? '#cbd5e1' : 'rgba(180,210,220,0.18)') : (isLight ? '#334155' : 'rgba(180,210,220,0.65)'),
-            opacity: page <= 1 ? 0.5 : 1,
-            transition: 'all .15s',
-            boxShadow: isLight ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-          }}
-        >
-          ‹ Trước
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button disabled={page <= 1} onClick={() => onPageChange(page - 1)} style={navBtn(page <= 1)}>
+          Trước
         </button>
-
-        {pages.map((p, idx) => {
-          if (p === '…') {
-            return (
-              <span
-                key={`ellipsis-${idx}`}
-                style={{
-                  width: 20,
-                  textAlign: 'center',
-                  fontSize: 11,
-                  color: isLight ? '#94a3b8' : 'rgba(180,210,220,0.3)',
-                }}
-              >
-                …
-              </span>
-            )
-          }
-
-          const pageNum = p as number
-          const isActive = pageNum === page
-
-          return (
+        {getPaginationRange(page, totalPages).map((num, idx) =>
+          num === '...' ? (
+            <span key={`dots-${idx}`} style={{ padding: '4px 6px', color: textMuted, fontSize: 12 }}>
+              ...
+            </span>
+          ) : (
             <button
-              key={pageNum}
-              onClick={() => onPageChange(pageNum)}
+              key={`page-${num}`}
+              onClick={() => onPageChange(num)}
               style={{
                 minWidth: 28,
                 height: 28,
-                borderRadius: 7,
-                cursor: 'pointer',
                 padding: '0 6px',
-                fontSize: 11,
-                fontWeight: isActive ? 700 : 500,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                borderRadius: 6,
+                border: 'none',
+                background: page === num ? '#1890ff' : 'transparent',
+                color: page === num ? '#ffffff' : isLight ? '#475569' : '#cbd5e1',
+                fontSize: 12,
+                fontWeight: page === num ? 700 : 500,
+                cursor: 'pointer',
                 fontFamily: 'Inter,sans-serif',
-                background: isActive
-                  ? isLight
-                    ? '#0284c7'
-                    : 'rgba(0,229,255,0.18)'
-                  : isLight
-                  ? '#ffffff'
-                  : 'rgba(255,255,255,0.04)',
-                border: isActive
-                  ? `1px solid ${isLight ? '#0284c7' : CYAN}`
-                  : `1px solid ${isLight ? '#cbd5e1' : 'rgba(255,255,255,0.09)'}`,
-                color: isActive
-                  ? '#ffffff'
-                  : isLight
-                  ? '#334155'
-                  : 'rgba(180,210,220,0.5)',
-                boxShadow: isActive ? (isLight ? '0 2px 6px rgba(2,132,199,0.3)' : '0 0 10px rgba(0,229,255,0.25)') : 'none',
-                transition: 'all .15s',
               }}
             >
-              {pageNum}
+              {num}
             </button>
           )
-        })}
-
-        {/* Next */}
-        <button
-          onClick={() => page < totalPages && onPageChange(page + 1)}
-          disabled={page >= totalPages}
-          title="Trang sau"
-          style={{
-            minWidth: 28,
-            height: 28,
-            borderRadius: 7,
-            cursor: page >= totalPages ? 'not-allowed' : 'pointer',
-            padding: '0 8px',
-            fontSize: 11,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontFamily: 'Inter,sans-serif',
-            background: isLight ? '#ffffff' : 'rgba(255,255,255,0.04)',
-            border: isLight ? '1px solid #cbd5e1' : '1px solid rgba(255,255,255,0.09)',
-            color: page >= totalPages ? (isLight ? '#cbd5e1' : 'rgba(180,210,220,0.18)') : (isLight ? '#334155' : 'rgba(180,210,220,0.65)'),
-            opacity: page >= totalPages ? 0.5 : 1,
-            transition: 'all .15s',
-            boxShadow: isLight ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-          }}
-        >
-          Sau ›
+        )}
+        <button disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} style={navBtn(page >= totalPages)}>
+          Sau
         </button>
       </div>
     </div>
@@ -627,113 +559,12 @@ export function TD({
         padding: "9px 12px",
         fontSize: 11,
         whiteSpace: "nowrap",
-        fontFamily: mono ? '"JetBrains Mono",monospace' : "inherit",
+        fontFamily: mono ? MONO : "inherit",
         color: accent ?? (isLight ? "#1e293b" : "rgba(220,240,245,0.65)"),
         fontWeight: mono ? 600 : 400,
       }}
     >
       {children}
     </td>
-  )
-}
-
-export function StatusBadge({ st }: { st: string }) {
-  const { theme } = useAppContext()
-  const isLight = theme === 'light'
-  const warn = st === "Cảnh báo"
-  return (
-    <span
-      style={{
-        padding: "2px 8px",
-        borderRadius: 4,
-        fontSize: 10,
-        fontWeight: 700,
-        background: warn
-          ? isLight
-            ? "#ffe4e6"
-            : "rgba(255,107,107,0.12)"
-          : isLight
-          ? "#dcfce7"
-          : "rgba(39,201,63,0.10)",
-        border: `1px solid ${
-          warn
-            ? isLight
-              ? "#fecdd3"
-              : "#ff6b6b44"
-            : isLight
-            ? "#bbf7d0"
-            : "#27c93f44"
-        }`,
-        color: warn ? (isLight ? "#e11d48" : CORAL) : (isLight ? "#15803d" : GREEN),
-      }}
-    >
-      {st}
-    </span>
-  )
-}
-
-export function SwitchBadge({ st }: { st: string }) {
-  const { theme } = useAppContext()
-  const isLight = theme === 'light'
-  const on = st === "BẬT"
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        background: on
-          ? isLight
-            ? "#dcfce7"
-            : "rgba(39,201,63,0.10)"
-          : isLight
-          ? "#ffe4e6"
-          : "rgba(255,107,107,0.10)",
-        border: `1px solid ${
-          on
-            ? isLight
-              ? "#bbf7d0"
-              : "#27c93f55"
-            : isLight
-            ? "#fecdd3"
-            : "#ff6b6b55"
-        }`,
-        borderRadius: 20,
-        padding: "3px 10px 3px 6px",
-      }}
-    >
-      <div
-        style={{
-          width: 22,
-          height: 12,
-          borderRadius: 6,
-          background: on ? (isLight ? "#16a34a" : GREEN) : (isLight ? "#e11d48" : CORAL),
-          display: "flex",
-          alignItems: "center",
-          padding: "0 2px",
-          flexShrink: 0,
-        }}
-      >
-        <div
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: "#fff",
-            marginLeft: on ? "auto" : 0,
-            boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-          }}
-        />
-      </div>
-      <span
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: on ? (isLight ? "#15803d" : GREEN) : (isLight ? "#e11d48" : CORAL),
-        }}
-      >
-        {st}
-      </span>
-    </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useMemo } from 'react'
 import {
   AreaChart,
   Area,
@@ -8,18 +8,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import {
-  CYAN,
-  CORAL,
-  YELLOW,
-  VIOLET,
-  GREEN,
-  GLASS,
-  GLASS_BDR,
-  AppHeader,
-  Sidebar,
-} from '../components/shared'
-import { getSensorHistory, ChartSeriesPoint } from '../services/mockApi'
+import { CYAN, YELLOW, VIOLET, GREEN, GLASS, GLASS_BDR, MONO, PageLayout } from '../components/shared'
+import { getSensorHistory, ChartSeriesPoint, DEVICES } from '../services/mockApi'
 import { useAppContext, RangeOption, SensorTypeOption } from '../context/AppContext'
 
 interface SingleSensorTooltipProps {
@@ -88,7 +78,7 @@ function SingleSensorTooltip({
           style={{
             color: color,
             fontWeight: 700,
-            fontFamily: '"JetBrains Mono",monospace',
+            fontFamily: MONO,
             marginLeft: 'auto',
           }}
         >
@@ -100,7 +90,6 @@ function SingleSensorTooltip({
 }
 
 function SingleSensorChartCard({
-  id,
   title,
   icon,
   dataKey,
@@ -110,10 +99,8 @@ function SingleSensorChartCard({
   data,
   isLive,
   domain,
-  tickFormatter,
   stats,
 }: {
-  id: string
   title: string
   icon: string
   dataKey: 'temperature' | 'light' | 'humidity'
@@ -123,7 +110,6 @@ function SingleSensorChartCard({
   data: ChartSeriesPoint[]
   isLive?: boolean
   domain: [(min: number) => number, (max: number) => number] | [number, number]
-  tickFormatter: (v: number) => string
   stats?: { avg: string | number; min: number; max: number } | null
 }) {
   const { theme } = useAppContext()
@@ -214,7 +200,7 @@ function SingleSensorChartCard({
               fontSize: 20,
               fontWeight: 800,
               color: color,
-              fontFamily: '"JetBrains Mono",monospace',
+              fontFamily: MONO,
               letterSpacing: -0.3,
             }}
           >
@@ -234,6 +220,20 @@ function SingleSensorChartCard({
 
       {/* Area / Line Chart */}
       <div style={{ flex: 1, minHeight: 185, width: '100%' }}>
+        {data.length > 0 && (
+          <div
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              color,
+              fontFamily: MONO,
+              marginBottom: 2,
+              paddingLeft: 4,
+            }}
+          >
+            ({unit})
+          </div>
+        )}
         {data.length === 0 ? (
           <div
             style={{
@@ -250,12 +250,12 @@ function SingleSensorChartCard({
         ) : (
           <ResponsiveContainer width="100%" height={185}>
             <AreaChart
-              key={`chart-${id}-${theme}`}
+              key={`chart-${dataKey}-${theme}`}
               data={data}
               margin={{ top: 8, right: 10, bottom: 0, left: -14 }}
             >
               <defs>
-                <linearGradient id={`grad-${id}`} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={`grad-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={color} stopOpacity={0.25} />
                   <stop offset="95%" stopColor={color} stopOpacity={0.0} />
                 </linearGradient>
@@ -272,16 +272,16 @@ function SingleSensorChartCard({
               />
               <YAxis
                 domain={domain}
-                tickFormatter={tickFormatter}
+                allowDecimals={false}
                 tick={{
                   fill: color,
                   fontSize: 9,
                   fontWeight: 600,
-                  fontFamily: '"JetBrains Mono",monospace',
+                  fontFamily: MONO,
                 }}
                 axisLine={false}
                 tickLine={false}
-                width={42}
+                width={dataKey === 'light' ? 44 : 38}
               />
               <Tooltip
                 content={
@@ -297,7 +297,7 @@ function SingleSensorChartCard({
                 dataKey={dataKey}
                 stroke={color}
                 strokeWidth={2.4}
-                fill={`url(#grad-${id})`}
+                fill={`url(#grad-${dataKey})`}
                 dot={{ r: 2.2, fill: color }}
                 activeDot={{ r: 5, fill: '#fff', stroke: color, strokeWidth: 2 }}
                 isAnimationActive={false}
@@ -329,10 +329,10 @@ function SingleSensorChartCard({
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <span>
-              Min: <strong style={{ color: isLight ? '#0f172a' : '#fff' }}>{stats.min}</strong>
+              Min: <strong style={{ color: isLight ? '#0f172a' : '#fff' }}>{stats.min} {unit}</strong>
             </span>
             <span>
-              Max: <strong style={{ color: isLight ? '#0f172a' : '#fff' }}>{stats.max}</strong>
+              Max: <strong style={{ color: isLight ? '#0f172a' : '#fff' }}>{stats.max} {unit}</strong>
             </span>
           </div>
         </div>
@@ -346,23 +346,17 @@ function LedSwitchCard({
   code,
   isOn,
   onToggle,
-  trackColor,
+  color,
 }: {
   label: string
   code: string
   isOn: boolean
   onToggle: () => void
-  trackColor: string
+  color: { light: string; dark: string }
 }) {
   const { theme } = useAppContext()
   const isLight = theme === 'light'
-  const activeColor = isLight
-    ? trackColor === YELLOW
-      ? '#d97706'
-      : trackColor === CYAN
-      ? '#0284c7'
-      : '#e11d48'
-    : trackColor
+  const activeColor = isLight ? color.light : color.dark
 
   return (
     <div
@@ -378,20 +372,14 @@ function LedSwitchCard({
       style={{
         background: isLight
           ? isOn
-            ? '#f0fdfa'
+            ? activeColor + '10'
             : '#ffffff'
           : isOn
           ? 'rgba(10,26,38,0.85)'
           : 'rgba(8,18,28,0.65)',
         backdropFilter: 'blur(16px)',
         border: `1px solid ${
-          isLight
-            ? isOn
-              ? activeColor + '44'
-              : '#e2e8f0'
-            : isOn
-            ? trackColor + '55'
-            : 'rgba(255,255,255,0.08)'
+          isOn ? activeColor + (isLight ? '44' : '55') : isLight ? '#e2e8f0' : 'rgba(255,255,255,0.08)'
         }`,
         borderRadius: 10,
         padding: '10px 14px',
@@ -400,12 +388,7 @@ function LedSwitchCard({
         justifyContent: 'space-between',
         cursor: 'pointer',
         transition: 'all .2s ease',
-        boxShadow:
-          isLight && isOn
-            ? `0 2px 10px ${activeColor}20`
-            : !isLight && isOn
-            ? `0 0 16px ${trackColor}22`
-            : 'none',
+        boxShadow: isOn ? (isLight ? `0 2px 10px ${activeColor}20` : `0 0 16px ${activeColor}22`) : 'none',
       }}
     >
       {/* Left: Device identity */}
@@ -446,7 +429,7 @@ function LedSwitchCard({
           <div
             style={{
               fontSize: 10,
-              fontFamily: '"JetBrains Mono",monospace',
+              fontFamily: MONO,
               color: isLight ? '#94a3b8' : 'rgba(180,210,220,0.3)',
               marginTop: 1,
             }}
@@ -491,414 +474,217 @@ function LedSwitchCard({
   )
 }
 
+// Mỗi đèn một màu riêng (đỏ, vàng, xanh dương)
+const LED_COLORS: { light: string; dark: string }[] = [
+  { light: '#dc2626', dark: '#ff5c5c' },
+  { light: '#d97706', dark: '#ffc93c' },
+  { light: '#2563eb', dark: '#4da3ff' },
+]
+
 const RANGE_LABELS: Record<RangeOption, string> = {
-  today: 'Thời gian thực (Hôm nay)',
+  today: 'Thời gian thực',
   week: 'Tuần',
   month: 'Tháng',
 }
 
+const SENSOR_TABS: { key: SensorTypeOption; label: string }[] = [
+  { key: 'all', label: 'Tất cả (3 biểu đồ)' },
+  { key: 'temperature', label: 'Nhiệt độ' },
+  { key: 'light', label: 'Ánh sáng' },
+  { key: 'humidity', label: 'Độ ẩm' },
+]
+
+type SensorKey = Exclude<SensorTypeOption, 'all'>
+
+const SENSOR_CHARTS: {
+  key: SensorKey
+  title: string
+  icon: string
+  unit: string
+  lightColor: string
+  darkColor: string
+  decimals: number
+  domain: [(min: number) => number, (max: number) => number]
+}[] = [
+  {
+    key: 'temperature',
+    title: 'Cảm biến Nhiệt độ',
+    icon: '🌡️',
+    unit: '°C',
+    lightColor: '#0284c7',
+    darkColor: CYAN,
+    decimals: 1,
+    domain: [(min) => Math.floor(min - 1), (max) => Math.ceil(max + 1)],
+  },
+  {
+    key: 'light',
+    title: 'Cảm biến Ánh sáng',
+    icon: '☀️',
+    unit: 'Lux',
+    lightColor: '#d97706',
+    darkColor: YELLOW,
+    decimals: 0,
+    domain: [(min) => Math.max(0, Math.floor((min - 20) / 50) * 50), (max) => Math.ceil((max + 20) / 50) * 50],
+  },
+  {
+    key: 'humidity',
+    title: 'Cảm biến Độ ẩm',
+    icon: '💧',
+    unit: '%',
+    lightColor: '#7c3aed',
+    darkColor: VIOLET,
+    decimals: 0,
+    domain: [(min) => Math.max(0, Math.floor(min - 3)), (max) => Math.min(100, Math.ceil(max + 3))],
+  },
+]
+
+function summarize(values: number[], decimals: number) {
+  const avg = values.reduce((a, b) => a + b, 0) / values.length
+  return {
+    avg: decimals ? avg.toFixed(decimals) : Math.round(avg),
+    min: Math.min(...values),
+    max: Math.max(...values),
+  }
+}
+
 export default function Home() {
-  const {
-    theme,
-    l1,
-    toggleL1,
-    l2,
-    toggleL2,
-    l3,
-    toggleL3,
-    range,
-    setRange,
-    sensorType,
-    setSensorType,
-    isLive,
-    setIsLive,
-    liveSeries,
-    currentTemp,
-    currentLight,
-    currentHumid,
-  } = useAppContext()
-
+  const { theme, leds, toggleLed, range, setRange, sensorType, setSensorType, isLive, setIsLive, liveSeries } =
+    useAppContext()
   const isLight = theme === 'light'
+  const latest = liveSeries[liveSeries.length - 1]
 
-  // Dynamic palette based on theme
-  const chartTempColor = isLight ? '#0284c7' : CYAN
-  const chartLightColor = isLight ? '#d97706' : YELLOW
-  const chartHumidColor = isLight ? '#7c3aed' : VIOLET
+  // "Thời gian thực" vẽ luồng live; tuần/tháng lấy dữ liệu lịch sử
+  const chartSeries = useMemo(
+    () => (range === 'today' ? liveSeries : getSensorHistory(range, sensorType).series),
+    [range, sensorType, liveSeries]
+  )
 
-  // Get active chart series: if range is today, show real-time streaming; otherwise show week/month
-  const chartSeries = useMemo(() => {
-    if (range === 'today') {
-      return liveSeries
-    }
-    return getSensorHistory(range, sensorType).series
-  }, [range, sensorType, liveSeries])
-
-  // Calculate summary metrics for the current view
-  const stats = useMemo(() => {
-    if (!chartSeries.length) return null
-
-    const temps = chartSeries.map((d) => d.temperature)
-    const lights = chartSeries.map((d) => d.light)
-    const humids = chartSeries.map((d) => d.humidity)
-
-    const avg = (arr: number[]) =>
-      (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1)
-
-    return {
-      tempAvg: avg(temps),
-      tempMin: Math.min(...temps),
-      tempMax: Math.max(...temps),
-      lightAvg: Math.round(Number(avg(lights))),
-      lightMin: Math.min(...lights),
-      lightMax: Math.max(...lights),
-      humidAvg: Math.round(Number(avg(humids))),
-      humidMin: Math.min(...humids),
-      humidMax: Math.max(...humids),
-    }
-  }, [chartSeries])
-
-  const showTemp = sensorType === 'all' || sensorType === 'temperature'
-  const showLight = sensorType === 'all' || sensorType === 'light'
-  const showHumid = sensorType === 'all' || sensorType === 'humidity'
+  const visibleCharts = SENSOR_CHARTS.filter((c) => sensorType === 'all' || sensorType === c.key)
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: isLight ? '#f1f5f9' : '#060d14',
+    <PageLayout
+      title="Trang chủ"
+      contentStyle={{
+        padding: 16,
         display: 'flex',
         flexDirection: 'column',
+        gap: 14,
+        background: isLight
+          ? '#f8fafc'
+          : 'radial-gradient(ellipse 70% 50% at 10% 0%, rgba(0,80,100,0.12) 0%, transparent 60%)',
       }}
     >
-      <AppHeader title="Trang chủ" />
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <Sidebar />
+      {/* ── Điều khiển công tắc LED ── */}
+      <div
+        style={{
+          background: isLight ? '#ffffff' : GLASS,
+          backdropFilter: 'blur(20px)',
+          border: `1px solid ${isLight ? '#e2e8f0' : GLASS_BDR}`,
+          borderRadius: 12,
+          padding: '12px 14px',
+          boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.04)' : 'none',
+        }}
+      >
         <div
           style={{
-            flex: 1,
-            overflow: 'auto',
-            padding: 16,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 14,
-            background: isLight
-              ? '#f8fafc'
-              : 'radial-gradient(ellipse 70% 50% at 10% 0%, rgba(0,80,100,0.12) 0%, transparent 60%)',
+            fontSize: 10,
+            fontWeight: 700,
+            color: isLight ? '#64748b' : 'rgba(180,210,220,0.38)',
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            marginBottom: 10,
           }}
         >
-          {/* ── Điều khiển công tắc LED ── */}
-          <div
-            style={{
-              background: isLight ? '#ffffff' : GLASS,
-              backdropFilter: 'blur(20px)',
-              border: `1px solid ${isLight ? '#e2e8f0' : GLASS_BDR}`,
-              borderRadius: 12,
-              padding: '12px 14px',
-              boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.04)' : 'none',
-            }}
-          >
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: isLight ? '#64748b' : 'rgba(180,210,220,0.38)',
-                letterSpacing: 1,
-                textTransform: 'uppercase',
-                marginBottom: 10,
-              }}
-            >
-              Điều khiển công tắc LED
-            </div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: 10,
-              }}
-            >
-              <LedSwitchCard
-                label="LED 1"
-                code="LED-01"
-                isOn={l1}
-                onToggle={toggleL1}
-                trackColor={CORAL}
-              />
-              <LedSwitchCard
-                label="LED 2"
-                code="LED-02"
-                isOn={l2}
-                onToggle={toggleL2}
-                trackColor={CYAN}
-              />
-              <LedSwitchCard
-                label="LED 3"
-                code="LED-03"
-                isOn={l3}
-                onToggle={toggleL3}
-                trackColor={YELLOW}
-              />
-            </div>
-          </div>
+          Điều khiển công tắc LED
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          {DEVICES.map((d, i) => (
+            <LedSwitchCard
+              key={d.code}
+              label={d.name}
+              code={d.code}
+              isOn={leds[d.name]}
+              onToggle={() => toggleLed(d.name)}
+              color={LED_COLORS[i % LED_COLORS.length]}
+            />
+          ))}
+        </div>
+      </div>
 
-          {/* ── Toolbar điều khiển biểu đồ cảm biến ── */}
-          <div
-            style={{
-              background: isLight ? '#ffffff' : GLASS,
-              backdropFilter: 'blur(20px)',
-              border: `1px solid ${isLight ? '#e2e8f0' : GLASS_BDR}`,
-              borderRadius: 12,
-              padding: '10px 14px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 8,
-              boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.04)' : 'none',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span
-                style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: isLight ? '#0f172a' : '#eef6f8',
-                }}
-              >
-                Biểu đồ cảm biến độc lập
-              </span>
+      {/* ── Toolbar điều khiển biểu đồ cảm biến ── */}
+      <div
+        style={{
+          background: isLight ? '#ffffff' : GLASS,
+          backdropFilter: 'blur(20px)',
+          border: `1px solid ${isLight ? '#e2e8f0' : GLASS_BDR}`,
+          borderRadius: 12,
+          padding: '10px 14px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 8,
+          boxShadow: isLight ? '0 1px 3px rgba(0,0,0,0.04)' : 'none',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: isLight ? '#0f172a' : '#eef6f8' }}>
+            Biểu đồ cảm biến độc lập
+          </span>
+        </div>
 
-              {/* Nút bật/tắt LIVE */}
+        {/* Bộ chọn lọc cảm biến */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {SENSOR_TABS.map((tab) => {
+            const active = sensorType === tab.key
+            return (
               <button
-                onClick={() => setIsLive((v) => !v)}
-                title={isLive ? 'Bấm để tạm dừng cập nhật' : 'Bấm để tiếp tục'}
+                key={tab.key}
+                onClick={() => setSensorType(tab.key)}
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
                   padding: '3px 8px',
-                  borderRadius: 20,
-                  cursor: 'pointer',
+                  borderRadius: 5,
                   fontSize: 10,
-                  fontWeight: 700,
+                  cursor: 'pointer',
                   fontFamily: 'Inter,sans-serif',
-                  background: isLight
-                    ? isLive
-                      ? '#dcfce7'
-                      : '#f1f5f9'
-                    : isLive
-                    ? 'rgba(39,201,63,0.14)'
-                    : 'rgba(255,255,255,0.06)',
-                  border: `1px solid ${
-                    isLight
-                      ? isLive
-                        ? '#86efac'
-                        : '#e2e8f0'
-                      : isLive
-                      ? '#27c93f77'
-                      : 'rgba(255,255,255,0.15)'
-                  }`,
-                  color: isLight
-                    ? isLive
-                      ? '#15803d'
-                      : '#64748b'
-                    : isLive
-                    ? GREEN
-                    : 'rgba(180,210,220,0.5)',
+                  background: active ? (isLight ? '#e2e8f0' : 'rgba(255,255,255,0.12)') : 'transparent',
+                  border: 'none',
+                  color: active ? (isLight ? '#0f172a' : '#ffffff') : isLight ? '#64748b' : 'rgba(180,210,220,0.45)',
+                  fontWeight: active ? 700 : 500,
                   transition: 'all .15s',
                 }}
               >
-                <span
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: isLive ? (isLight ? '#16a34a' : GREEN) : isLight ? '#94a3b8' : 'rgba(180,210,220,0.3)',
-                    boxShadow: isLive ? `0 0 6px ${isLight ? '#16a34a' : GREEN}` : 'none',
-                    animation: isLive ? 'pulse-slow 1.5s ease-in-out infinite' : 'none',
-                  }}
-                />
-                {isLive ? 'LIVE (2s)' : 'TẠM DỪNG'}
+                {tab.label}
               </button>
-
-              {/* Chọn mốc thời gian */}
-              <div style={{ display: 'flex', gap: 5 }}>
-                {(['today', 'week', 'month'] as RangeOption[]).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setRange(r)}
-                    style={{
-                      padding: '3px 9px',
-                      borderRadius: 5,
-                      fontSize: 10,
-                      cursor: 'pointer',
-                      fontFamily: 'Inter,sans-serif',
-                      background:
-                        r === range
-                          ? isLight
-                            ? '#e0f2fe'
-                            : 'rgba(0,229,255,0.14)'
-                          : isLight
-                          ? '#f8fafc'
-                          : 'rgba(255,255,255,0.05)',
-                      border: `1px solid ${
-                        r === range
-                          ? isLight
-                            ? '#0284c7'
-                            : CYAN
-                          : isLight
-                          ? '#e2e8f0'
-                          : 'rgba(255,255,255,0.09)'
-                      }`,
-                      color:
-                        r === range
-                          ? isLight
-                            ? '#0284c7'
-                            : CYAN
-                          : isLight
-                          ? '#64748b'
-                          : 'rgba(180,210,220,0.38)',
-                      fontWeight: r === range ? 700 : 500,
-                      transition: 'all .12s',
-                    }}
-                  >
-                    {r === 'today' ? 'Thời gian thực' : RANGE_LABELS[r]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Bộ chọn lọc cảm biến */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {(
-                [
-                  { key: 'all', label: 'Tất cả (3 biểu đồ)' },
-                  { key: 'temperature', label: 'Nhiệt độ' },
-                  { key: 'light', label: 'Ánh sáng' },
-                  { key: 'humidity', label: 'Độ ẩm' },
-                ] as { key: SensorTypeOption; label: string }[]
-              ).map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setSensorType(tab.key)}
-                  style={{
-                    padding: '3px 8px',
-                    borderRadius: 5,
-                    fontSize: 10,
-                    cursor: 'pointer',
-                    fontFamily: 'Inter,sans-serif',
-                    background:
-                      sensorType === tab.key
-                        ? isLight
-                          ? '#e2e8f0'
-                          : 'rgba(255,255,255,0.12)'
-                        : 'transparent',
-                    border: 'none',
-                    color:
-                      sensorType === tab.key
-                        ? isLight
-                          ? '#0f172a'
-                          : '#ffffff'
-                        : isLight
-                        ? '#64748b'
-                        : 'rgba(180,210,220,0.45)',
-                    fontWeight: sensorType === tab.key ? 700 : 500,
-                    transition: 'all .15s',
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* ── 3 Biểu đồ cảm biến riêng biệt ── */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns:
-                sensorType === 'all'
-                  ? 'repeat(auto-fit, minmax(340px, 1fr))'
-                  : '1fr',
-              gap: 12,
-            }}
-          >
-            {showTemp && (
-              <SingleSensorChartCard
-                id="temperature"
-                title="Cảm biến Nhiệt độ"
-                icon="🌡️"
-                dataKey="temperature"
-                unit="°C"
-                currentValue={currentTemp.toFixed(1)}
-                color={chartTempColor}
-                data={chartSeries}
-                isLive={isLive}
-                domain={[(min: number) => Math.floor(min - 1), (max: number) => Math.ceil(max + 1)]}
-                tickFormatter={(v) => `${v}°C`}
-                stats={
-                  stats
-                    ? {
-                        avg: stats.tempAvg,
-                        min: stats.tempMin,
-                        max: stats.tempMax,
-                      }
-                    : null
-                }
-              />
-            )}
-
-            {showLight && (
-              <SingleSensorChartCard
-                id="light"
-                title="Cảm biến Ánh sáng"
-                icon="☀️"
-                dataKey="light"
-                unit="lx"
-                currentValue={String(currentLight)}
-                color={chartLightColor}
-                data={chartSeries}
-                isLive={isLive}
-                domain={[(min: number) => Math.max(0, Math.floor(min - 35)), (max: number) => Math.ceil(max + 35)]}
-                tickFormatter={(v) => `${v} lx`}
-                stats={
-                  stats
-                    ? {
-                        avg: stats.lightAvg,
-                        min: stats.lightMin,
-                        max: stats.lightMax,
-                      }
-                    : null
-                }
-              />
-            )}
-
-            {showHumid && (
-              <SingleSensorChartCard
-                id="humidity"
-                title="Cảm biến Độ ẩm"
-                icon="💧"
-                dataKey="humidity"
-                unit="%"
-                currentValue={String(currentHumid)}
-                color={chartHumidColor}
-                data={chartSeries}
-                isLive={isLive}
-                domain={[(min: number) => Math.max(0, Math.floor(min - 3)), (max: number) => Math.min(100, Math.ceil(max + 3))]}
-                tickFormatter={(v) => `${v}%`}
-                stats={
-                  stats
-                    ? {
-                        avg: stats.humidAvg,
-                        min: stats.humidMin,
-                        max: stats.humidMax,
-                      }
-                    : null
-                }
-              />
-            )}
-          </div>
+            )
+          })}
         </div>
       </div>
-    </div>
+
+      {/* ── Biểu đồ cảm biến riêng biệt ── */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: sensorType === 'all' ? 'repeat(auto-fit, minmax(340px, 1fr))' : '1fr',
+          gap: 12,
+        }}
+      >
+        {visibleCharts.map((c) => (
+          <SingleSensorChartCard
+            key={c.key}
+            title={c.title}
+            icon={c.icon}
+            dataKey={c.key}
+            unit={c.unit}
+            currentValue={latest[c.key].toFixed(c.decimals)}
+            color={isLight ? c.lightColor : c.darkColor}
+            data={chartSeries}
+            isLive={isLive}
+            domain={c.domain}
+            stats={chartSeries.length ? summarize(chartSeries.map((p) => p[c.key]), c.decimals) : null}
+          />
+        ))}
+      </div>
+    </PageLayout>
   )
 }

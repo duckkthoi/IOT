@@ -4,23 +4,16 @@
  * UC1, UC2, UC3, UC4, UC5
  */
 
-export interface SensorDataRecord {
-  id: string
-  recorded_at: string       // ISO 8601
-  display_time: string      // "16/08 08:00:12"
-  temperature: number       // °C
-  light: number             // Lx
-  humidity: number          // %
-  status: 'normal' | 'warning'
-  status_label: 'Bình thường' | 'Cảnh báo'
-}
-
 export interface ChartSeriesPoint {
   time: string
   temperature: number
   light: number
   humidity: number
 }
+
+type DeviceAction = 'BẬT' | 'TẮT'
+type DeviceActionStatus = 'Thành công' | 'Thất bại' | 'Đang xử lý'
+type DeviceActionSource = 'Thủ công' | 'Tự động' | 'Lịch trình'
 
 export interface DeviceActionRecord {
   id: string
@@ -29,10 +22,10 @@ export interface DeviceActionRecord {
   device_id: number
   device_code: string
   device_name: string
-  action: 'BẬT' | 'TẮT'
-  status: 'Thành công' | 'Thất bại'
+  action: DeviceAction
+  status: DeviceActionStatus
   performed_by: string
-  source: 'Thủ công' | 'Tự động' | 'Lịch trình'
+  source: DeviceActionSource
 }
 
 export interface PaginatedResult<T> {
@@ -45,147 +38,123 @@ export interface PaginatedResult<T> {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
- * Mock Database - Dữ liệu khởi tạo chi tiết
+ * Tiện ích dùng chung
  * ──────────────────────────────────────────────────────────────────────── */
 
-// Sinh 60 bản ghi đo cảm biến bám sát 16/08/2026
-function generateMockSensorData(): SensorDataRecord[] {
-  const records: SensorDataRecord[] = []
-  const baseDate = new Date('2026-08-16T12:00:00')
+const pad = (n: number) => String(n).padStart(2, '0')
 
-  for (let i = 0; i < 60; i++) {
-    // Lùi dần thời gian mỗi bản ghi 10 - 15 phút
-    const minutesAgo = i * 11 + (i % 3) * 2
-    const date = new Date(baseDate.getTime() - minutesAgo * 60 * 1000)
-
-    const hour = date.getHours()
-    // Nhiệt độ dao động theo giờ: đêm mát 24-26°C, trưa nóng 28-32°C
-    const tempBase = hour >= 10 && hour <= 14 ? 29.5 : hour >= 6 && hour < 10 ? 26.5 : 24.8
-    const tempNoise = Number(((i % 7) * 0.4 - 1.2).toFixed(1))
-    const temp = Number((tempBase + tempNoise).toFixed(1))
-
-    // Ánh sáng dao động theo giờ: đêm 5-50 lx, sáng 400-800 lx, trưa 900-1250 lx
-    let light = 300
-    if (hour < 6) light = 10 + (i % 5) * 8
-    else if (hour < 9) light = 350 + (i % 6) * 75
-    else if (hour <= 12) light = 820 + (i % 8) * 55
-    else light = 700 - (i % 5) * 60
-
-    // Độ ẩm nghịch với nhiệt độ: 50% - 72%
-    const humid = Math.max(48, Math.min(78, Math.round(75 - (temp - 24) * 3 + (i % 4) * 2)))
-
-    // Ngưỡng cảnh báo: temp > 30°C hoặc light > 1050 hoặc humid < 52
-    const isWarning = temp > 30.0 || light > 1050 || humid < 52 || i === 2 || i === 4 || i === 10
-
-    const dayStr = String(date.getDate()).padStart(2, '0')
-    const monStr = String(date.getMonth() + 1).padStart(2, '0')
-    const hStr = String(date.getHours()).padStart(2, '0')
-    const mStr = String(date.getMinutes()).padStart(2, '0')
-    const sStr = String((i * 17) % 60).padStart(2, '0')
-
-    const idNum = String(60 - i).padStart(3, '0')
-
-    records.push({
-      id: `#${idNum}`,
-      recorded_at: date.toISOString(),
-      display_time: `${dayStr}/${monStr} ${hStr}:${mStr}:${sStr}`,
-      temperature: temp,
-      light,
-      humidity: humid,
-      status: isWarning ? 'warning' : 'normal',
-      status_label: isWarning ? 'Cảnh báo' : 'Bình thường',
-    })
-  }
-
-  // Đảo lại để xếp ID tăng dần mặc định
-  return records.reverse()
+// "16/08 08:00:12"
+function formatDisplayTime(d: Date, seconds = d.getSeconds()) {
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(seconds)}`
 }
+
+// "2026-10-13 17:11:49"
+function formatTimestamp(d: Date) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+function paginate<T>(items: T[], page = 1, limit = 25): PaginatedResult<T> {
+  const safeLimit = Math.max(1, limit)
+  const total = items.length
+  const totalPages = Math.max(1, Math.ceil(total / safeLimit))
+  const currentPage = Math.min(Math.max(1, page), totalPages)
+  const startIndex = (currentPage - 1) * safeLimit
+
+  return {
+    success: true,
+    total,
+    page: currentPage,
+    limit: safeLimit,
+    totalPages,
+    data: items.slice(startIndex, startIndex + safeLimit),
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Mock Database - Lịch sử điều khiển LED
+ * ──────────────────────────────────────────────────────────────────────── */
+
+export const DEVICES = [
+  { id: 1, code: 'LED-01', name: 'LED 1' },
+  { id: 2, code: 'LED-02', name: 'LED 2' },
+  { id: 3, code: 'LED-03', name: 'LED 3' },
+] as const
+export type DeviceName = (typeof DEVICES)[number]['name']
+const DEFAULT_USER = 'Minh Đức'
 
 // Sinh 50 bản ghi lịch sử điều khiển LED
 function generateMockDeviceActions(): DeviceActionRecord[] {
   const records: DeviceActionRecord[] = []
   const baseDate = new Date('2026-08-16T12:00:00')
-  const devices = [
-    { id: 1, code: 'LED-01', name: 'LED 1' },
-    { id: 2, code: 'LED-02', name: 'LED 2' },
-    { id: 3, code: 'LED-03', name: 'LED 3' },
-  ]
-  const users = ['Minh Đức']
-  const sources: ('Thủ công' | 'Tự động' | 'Lịch trình')[] = ['Thủ công', 'Tự động', 'Lịch trình']
+  const sources: DeviceActionSource[] = ['Thủ công', 'Tự động', 'Lịch trình']
 
   for (let i = 0; i < 50; i++) {
     const minutesAgo = i * 14 + (i % 4) * 3
     const date = new Date(baseDate.getTime() - minutesAgo * 60 * 1000)
-
-    const dev = devices[i % 3]
-    const action: 'BẬT' | 'TẮT' = (i % 2 === 0) ? 'BẬT' : 'TẮT'
-    const user = users[i % users.length]
-    const source = sources[i % sources.length]
-
-    const dayStr = String(date.getDate()).padStart(2, '0')
-    const monStr = String(date.getMonth() + 1).padStart(2, '0')
-    const hStr = String(date.getHours()).padStart(2, '0')
-    const mStr = String(date.getMinutes()).padStart(2, '0')
-    const sStr = String((i * 19) % 60).padStart(2, '0')
-
-    const idNum = String(50 - i).padStart(2, '0')
+    const dev = DEVICES[i % 3]
 
     records.push({
-      id: `#H${idNum}`,
+      id: `#H${pad(50 - i)}`,
       performed_at: date.toISOString(),
-      display_time: `${dayStr}/${monStr} ${hStr}:${mStr}:${sStr}`,
+      display_time: formatDisplayTime(date, (i * 19) % 60),
       device_id: dev.id,
       device_code: dev.code,
       device_name: dev.name,
-      action,
-      status: i % 6 === 2 || i % 11 === 5 ? 'Thất bại' : 'Thành công',
-      performed_by: user,
-      source,
+      action: i % 2 === 0 ? 'BẬT' : 'TẮT',
+      status: i % 13 === 7 ? 'Đang xử lý' : i % 6 === 2 || i % 11 === 5 ? 'Thất bại' : 'Thành công',
+      performed_by: DEFAULT_USER,
+      source: sources[i % sources.length],
     })
   }
 
   return records.reverse()
 }
 
-// In-memory data stores
-let mockSensorData = generateMockSensorData()
-let mockDeviceActions = generateMockDeviceActions()
+const mockDeviceActions = generateMockDeviceActions()
+
+// Thông báo cho UI mỗi khi lịch sử điều khiển thay đổi
+const deviceActionListeners = new Set<() => void>()
+export function subscribeDeviceActions(listener: () => void) {
+  deviceActionListeners.add(listener)
+  return () => {
+    deviceActionListeners.delete(listener)
+  }
+}
+function notifyDeviceActions() {
+  deviceActionListeners.forEach((fn) => fn())
+}
 
 export function recordDeviceAction(
-  deviceName: string,
-  action: 'BẬT' | 'TẮT',
-  performedBy: string = 'Minh Đức',
-  source: 'Thủ công' | 'Tự động' | 'Lịch trình' = 'Thủ công'
+  deviceName: DeviceName,
+  action: DeviceAction,
+  performedBy: string = DEFAULT_USER,
+  source: DeviceActionSource = 'Thủ công'
 ) {
   const now = new Date()
-  const dayStr = String(now.getDate()).padStart(2, '0')
-  const monStr = String(now.getMonth() + 1).padStart(2, '0')
-  const hStr = String(now.getHours()).padStart(2, '0')
-  const mStr = String(now.getMinutes()).padStart(2, '0')
-  const sStr = String(now.getSeconds()).padStart(2, '0')
-
-  const devMap: Record<string, { id: number; code: string }> = {
-    'LED 1': { id: 1, code: 'LED-01' },
-    'LED 2': { id: 2, code: 'LED-02' },
-    'LED 3': { id: 3, code: 'LED-03' },
-  }
-  const dev = devMap[deviceName] || { id: 1, code: 'LED-01' }
-  const newId = `#H${String(mockDeviceActions.length + 1).padStart(2, '0')}`
+  const dev = DEVICES.find((d) => d.name === deviceName)!
 
   const newRecord: DeviceActionRecord = {
-    id: newId,
+    id: `#H${pad(mockDeviceActions.length + 1)}`,
     performed_at: now.toISOString(),
-    display_time: `${dayStr}/${monStr} ${hStr}:${mStr}:${sStr}`,
+    display_time: formatDisplayTime(now),
     device_id: dev.id,
     device_code: dev.code,
     device_name: deviceName,
     action,
-    status: 'Thành công',
+    status: 'Đang xử lý',
     performed_by: performedBy,
     source,
   }
 
   mockDeviceActions.push(newRecord)
+  notifyDeviceActions()
+
+  // Giả lập thiết bị phản hồi sau 3 giây
+  setTimeout(() => {
+    newRecord.status = 'Thành công'
+    notifyDeviceActions()
+  }, 3000)
+
   return newRecord
 }
 
@@ -233,114 +202,21 @@ const CHART_DATA_MONTH: ChartSeriesPoint[] = [
   { time: '31/08', temperature: 26.8, light: 740, humidity: 69 },
 ]
 
+const CHART_DATA: Record<'today' | 'week' | 'month', ChartSeriesPoint[]> = {
+  today: CHART_DATA_TODAY,
+  week: CHART_DATA_WEEK,
+  month: CHART_DATA_MONTH,
+}
+
 export function getSensorHistory(
   range: 'today' | 'week' | 'month' = 'today',
   type: 'all' | 'temperature' | 'light' | 'humidity' = 'all'
 ): { range: string; type: string; series: ChartSeriesPoint[] } {
-  let rawSeries: ChartSeriesPoint[] = CHART_DATA_TODAY
-  if (range === 'week') rawSeries = CHART_DATA_WEEK
-  else if (range === 'month') rawSeries = CHART_DATA_MONTH
-
-  return {
-    range,
-    type,
-    series: rawSeries,
-  }
+  return { range, type, series: CHART_DATA[range] }
 }
 
 /* ────────────────────────────────────────────────────────────────────────
- * 2. API: UC4 - Tra cứu dữ liệu cảm biến (phân trang + lọc)
- * GET /api/sensors/data
- * ──────────────────────────────────────────────────────────────────────── */
-
-export interface SensorQueryParams {
-  page?: number
-  limit?: number
-  search?: string
-  status?: 'all' | 'normal' | 'warning'
-  time_range?: 'all' | '1h' | '3h' | '6h' | 'today' | 'custom'
-  from?: string
-  to?: string
-}
-
-export function getSensorData(params: SensorQueryParams): PaginatedResult<SensorDataRecord> {
-  const page = Math.max(1, params.page || 1)
-  const limit = Math.max(1, params.limit || 25)
-  const search = (params.search || '').trim().toLowerCase()
-  const status = params.status || 'all'
-  const timeRange = params.time_range || 'all'
-
-  const now = new Date('2026-08-16T12:00:00')
-
-  // Lọc dữ liệu
-  let filtered = mockSensorData.filter(item => {
-    // 1. Lọc theo trạng thái
-    if (status !== 'all' && item.status !== status) {
-      return false
-    }
-
-    // 2. Lọc theo thời gian
-    const itemDate = new Date(item.recorded_at)
-    if (timeRange === '1h') {
-      const start = new Date(now.getTime() - 1 * 3600 * 1000)
-      if (itemDate < start || itemDate > now) return false
-    } else if (timeRange === '3h') {
-      const start = new Date(now.getTime() - 3 * 3600 * 1000)
-      if (itemDate < start || itemDate > now) return false
-    } else if (timeRange === '6h') {
-      const start = new Date(now.getTime() - 6 * 3600 * 1000)
-      if (itemDate < start || itemDate > now) return false
-    } else if (timeRange === 'today') {
-      const start = new Date('2026-08-16T00:00:00')
-      if (itemDate < start || itemDate > now) return false
-    } else if (timeRange === 'custom') {
-      if (params.from) {
-        const fromDate = new Date(params.from)
-        if (itemDate < fromDate) return false
-      }
-      if (params.to) {
-        const toDate = new Date(params.to)
-        if (itemDate > toDate) return false
-      }
-    }
-
-    // 3. Lọc theo từ khoá
-    if (search) {
-      const matchId = item.id.toLowerCase().includes(search)
-      const matchTime = item.display_time.toLowerCase().includes(search)
-      const matchTemp = String(item.temperature).includes(search)
-      const matchLight = String(item.light).includes(search)
-      const matchHumid = String(item.humidity).includes(search)
-      const matchStatus = item.status_label.toLowerCase().includes(search)
-      if (!matchId && !matchTime && !matchTemp && !matchLight && !matchHumid && !matchStatus) {
-        return false
-      }
-    }
-
-    return true
-  })
-
-  // Sắp xếp bản ghi mới nhất lên đầu
-  const sorted = [...filtered].reverse()
-
-  const total = sorted.length
-  const totalPages = Math.max(1, Math.ceil(total / limit))
-  const currentPage = Math.min(page, totalPages)
-  const startIndex = (currentPage - 1) * limit
-  const pagedData = sorted.slice(startIndex, startIndex + limit)
-
-  return {
-    success: true,
-    total,
-    page: currentPage,
-    limit,
-    totalPages,
-    data: pagedData,
-  }
-}
-
-/* ────────────────────────────────────────────────────────────────────────
- * 3. API: UC5 - Tra cứu lịch sử hoạt động điều khiển thiết bị (phân trang + lọc)
+ * 2. API: UC5 - Tra cứu lịch sử hoạt động điều khiển thiết bị (phân trang + lọc)
  * GET /api/devices/actions
  * ──────────────────────────────────────────────────────────────────────── */
 
@@ -355,96 +231,28 @@ export interface DeviceActionsQueryParams {
 }
 
 export function getDeviceActions(params: DeviceActionsQueryParams): PaginatedResult<DeviceActionRecord> {
-  const page = Math.max(1, params.page || 1)
-  const limit = Math.max(1, params.limit || 25)
   const search = (params.search || '').trim().toLowerCase()
   const devFilter = params.device_name || 'all'
   const actFilter = params.action || 'all'
   const statusFilter = params.status || 'all'
 
-  let filtered = mockDeviceActions.filter(item => {
-    // 1. Lọc theo thiết bị
-    if (devFilter !== 'all' && item.device_name !== devFilter && item.device_code !== devFilter) {
-      return false
-    }
+  const filtered = mockDeviceActions.filter((item) => {
+    if (devFilter !== 'all' && item.device_name !== devFilter && item.device_code !== devFilter) return false
+    if (actFilter !== 'all' && item.action !== actFilter) return false
+    if (statusFilter !== 'all' && item.status !== statusFilter) return false
+    if (!search) return true
 
-    // 2. Lọc theo hành động
-    if (actFilter !== 'all' && item.action !== actFilter) {
-      return false
-    }
-
-    // 3. Lọc theo trạng thái
-    if (statusFilter !== 'all' && item.status !== statusFilter) {
-      return false
-    }
-
-    // 4. Tìm kiếm
-    if (search) {
-      const matchId = item.id.toLowerCase().includes(search)
-      const matchDev = item.device_name.toLowerCase().includes(search) || item.device_code.toLowerCase().includes(search)
-      const matchUser = item.performed_by.toLowerCase().includes(search)
-      const matchSrc = item.source.toLowerCase().includes(search)
-      const matchTime = item.display_time.toLowerCase().includes(search)
-      if (!matchId && !matchDev && !matchUser && !matchSrc && !matchTime) {
-        return false
-      }
-    }
-
-    return true
+    return [item.id, item.device_name, item.device_code, item.performed_by, item.source, item.display_time]
+      .some((field) => field.toLowerCase().includes(search))
   })
 
-  const sorted = params.sort === 'Oldest First' ? [...filtered] : [...filtered].reverse()
-  const total = sorted.length
-  const totalPages = Math.max(1, Math.ceil(total / limit))
-  const currentPage = Math.min(page, totalPages)
-  const startIndex = (currentPage - 1) * limit
-  const pagedData = sorted.slice(startIndex, startIndex + limit)
-
-  return {
-    success: true,
-    total,
-    page: currentPage,
-    limit,
-    totalPages,
-    data: pagedData,
-  }
+  // Dữ liệu lưu theo thứ tự cũ → mới
+  const sorted = params.sort === 'Oldest First' ? filtered : filtered.reverse()
+  return paginate(sorted, params.page, params.limit || 25)
 }
 
 /* ────────────────────────────────────────────────────────────────────────
- * 4. Tiện ích Xuất CSV theo chuẩn SRS
- * ──────────────────────────────────────────────────────────────────────── */
-
-export function downloadCsv(filename: string, csvContent: string) {
-  // Thêm BOM UTF-8 để Microsoft Excel hiển thị tiếng Việt có dấu chuẩn xác
-  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.setAttribute('href', url)
-  link.setAttribute('download', filename)
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-}
-
-export function exportSensorDataCsv(records: SensorDataRecord[]) {
-  const header = 'Mã bản ghi,Thời gian,Nhiệt độ (°C),Ánh sáng (Lx),Độ ẩm (%),Trạng thái\n'
-  const rows = records.map(r =>
-    `"${r.id}","${r.display_time}",${r.temperature},${r.light},${r.humidity},"${r.status_label}"`
-  ).join('\n')
-  downloadCsv('du_lieu_cam_bien_iot_community.csv', header + rows)
-}
-
-export function exportDeviceActionsCsv(records: DeviceActionRecord[]) {
-  const header = 'STT,Mã bản ghi,Thời gian,Thiết bị,Hành động,Trạng thái,Người thực hiện\n'
-  const rows = records.map((r, i) =>
-    `${i + 1},"${r.id}","${r.display_time}","${r.device_name}","${r.action}","${r.status}","${r.performed_by}"`
-  ).join('\n')
-  downloadCsv('lich_su_hoat_dong_iot_community.csv', header + rows)
-}
-
-/* ────────────────────────────────────────────────────────────────────────
- * 5. API: Individual Sensor Readings Template (bám sát template UI)
+ * 3. API: UC4 - Tra cứu dữ liệu cảm biến theo từng lần đo (phân trang + lọc)
  * ──────────────────────────────────────────────────────────────────────── */
 
 export interface IndividualSensorReading {
@@ -458,72 +266,78 @@ export interface IndividualSensorReading {
   rawDate: number
 }
 
+type ReadingSort =
+  | 'Newest First'
+  | 'Oldest First'
+  | 'Value High to Low'
+  | 'Value Low to High'
+  | 'No Asc'
+  | 'No Desc'
+  | 'Id Asc'
+  | 'Id Desc'
+  | 'Name Asc'
+  | 'Name Desc'
+
 export interface IndividualReadingQueryParams {
   page?: number
   limit?: number
   search?: string
-  type?: 'All Types' | 'Temperature' | 'Humidity' | 'Light'
-  sort?:
-    | 'Newest First'
-    | 'Oldest First'
-    | 'Value High to Low'
-    | 'Value Low to High'
-    | 'No Asc'
-    | 'No Desc'
-    | 'Id Asc'
-    | 'Id Desc'
-    | 'Name Asc'
-    | 'Name Desc'
+  type?: 'All Types' | 'Temperature' | 'Humidity' | 'Light' | 'Time'
+  sort?: ReadingSort
 }
 
-let cachedIndividualReadings: IndividualSensorReading[] | null = null
+const READING_COMPARATORS: Record<ReadingSort, (a: IndividualSensorReading, b: IndividualSensorReading) => number> = {
+  'Newest First': (a, b) => b.rawDate - a.rawDate,
+  'Oldest First': (a, b) => a.rawDate - b.rawDate,
+  'Value High to Low': (a, b) => b.value - a.value,
+  'Value Low to High': (a, b) => a.value - b.value,
+  'No Asc': (a, b) => a.no - b.no,
+  'No Desc': (a, b) => b.no - a.no,
+  'Id Asc': (a, b) => a.id.localeCompare(b.id),
+  'Id Desc': (a, b) => b.id.localeCompare(a.id),
+  'Name Asc': (a, b) => a.type.localeCompare(b.type),
+  'Name Desc': (a, b) => b.type.localeCompare(a.type),
+}
+
+const READING_UNITS: Record<IndividualSensorReading['type'], string> = {
+  Temperature: '°C',
+  Humidity: '%',
+  Light: 'Lux',
+}
 
 function generateAllIndividualReadings(): IndividualSensorReading[] {
   const TOTAL = 9276
   const list: IndividualSensorReading[] = []
-  const types: Array<'Temperature' | 'Humidity' | 'Light'> = ['Temperature', 'Humidity', 'Light']
+  const types: IndividualSensorReading['type'][] = ['Temperature', 'Humidity', 'Light']
 
   // Mốc thời gian mới nhất; mỗi chu kỳ 3 cảm biến cách nhau 5 giây
   const baseDate = new Date('2026-10-27T14:58:37')
   const STEP_SECONDS = 5
 
-  const pad = (n: number) => String(n).padStart(2, '0')
-
   for (let i = 0; i < TOTAL; i++) {
     const sensorType = types[i % 3]
     const cycle = Math.floor(i / 3)
     const d = new Date(baseDate.getTime() - cycle * STEP_SECONDS * 1000)
-    const timeStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 
-    // ID dạng #Xddd: X là chữ cái in hoa (đổi mỗi 1000 bản ghi), ddd là 3 chữ số
-    const id = `#${String.fromCharCode(65 + Math.floor(i / 1000))}${String(i % 1000).padStart(3, '0')}`
-
-    let val = 0
-    let unit = ''
-    let formatted = ''
-
+    let value: number
     if (sensorType === 'Temperature') {
-      val = Number((28.4 + Math.sin(cycle / 9) * 1.6 + (i % 5) * 0.1).toFixed(1))
-      unit = '°C'
-      formatted = `${val} °C`
+      value = Number((28.4 + Math.sin(cycle / 9) * 1.6 + (i % 5) * 0.1).toFixed(1))
     } else if (sensorType === 'Humidity') {
-      val = Math.round(64 + Math.cos(cycle / 11) * 6 + (i % 4))
-      unit = '%'
-      formatted = `${val} %`
+      value = Math.round(64 + Math.cos(cycle / 11) * 6 + (i % 4))
     } else {
-      val = Math.round(820 + Math.sin(cycle / 7) * 90 + (i % 7) * 6)
-      unit = 'Lux'
-      formatted = `${val} Lux`
+      value = Math.round(820 + Math.sin(cycle / 7) * 90 + (i % 7) * 6)
     }
+    const unit = READING_UNITS[sensorType]
 
     list.push({
       no: i + 1,
-      id,
+      // ID dạng #Xddd: X là chữ cái in hoa (đổi mỗi 1000 bản ghi), ddd là 3 chữ số
+      id: `#${String.fromCharCode(65 + Math.floor(i / 1000))}${String(i % 1000).padStart(3, '0')}`,
       type: sensorType,
-      value: val,
+      value,
       unit,
-      formattedValue: formatted,
-      timestamp: timeStr,
+      formattedValue: `${value} ${unit}`,
+      timestamp: formatTimestamp(d),
       rawDate: d.getTime(),
     })
   }
@@ -531,86 +345,64 @@ function generateAllIndividualReadings(): IndividualSensorReading[] {
   return list
 }
 
+let cachedIndividualReadings: IndividualSensorReading[] | null = null
+
+// Số nguyên khớp cả phần thập phân ("28" → 28.x °C), số thập phân khớp chính xác ("28.4" → 28.4 °C)
+function matchesValue(value: number, search: string) {
+  const normalized = search.replace(',', '.')
+  const target = Number(normalized)
+  if (Number.isNaN(target)) return false
+  return normalized.includes('.') ? value === target : Math.trunc(value) === target
+}
+
 export function getIndividualSensorReadings(
   params: IndividualReadingQueryParams = {}
 ): PaginatedResult<IndividualSensorReading> {
-  if (!cachedIndividualReadings) {
-    cachedIndividualReadings = generateAllIndividualReadings()
-  }
+  cachedIndividualReadings ??= generateAllIndividualReadings()
 
-  const page = Math.max(1, params.page || 1)
-  const limit = Math.max(1, params.limit || 10)
   const search = (params.search || '').trim().toLowerCase()
   const type = params.type || 'All Types'
   const sort = params.sort || 'Newest First'
 
   const filtered = cachedIndividualReadings.filter((item) => {
-    if (type !== 'All Types' && item.type !== type) {
-      return false
-    }
-    if (search) {
-      const matchId = item.id.toLowerCase().includes(search)
-      const matchType = item.type.toLowerCase().includes(search)
-      const matchVal =
-        item.formattedValue.toLowerCase().includes(search) ||
-        String(item.value).includes(search)
-      const matchTime = item.timestamp.includes(search)
-      const matchNo = String(item.no).includes(search)
-      if (!matchId && !matchType && !matchVal && !matchTime && !matchNo) {
-        return false
-      }
-    }
-    return true
+    // "Time": giữ cả 3 loại cảm biến, tìm theo chuỗi thời gian ("14:58", "2026-10-27 14:5")
+    if (type === 'Time') return !search || item.timestamp.includes(search)
+    if (type !== 'All Types' && item.type !== type) return false
+    return !search || matchesValue(item.value, search)
   })
 
-  // Sắp xếp
-  const sorted = [...filtered]
-  if (sort === 'Newest First') {
-    sorted.sort((a, b) => b.rawDate - a.rawDate)
-  } else if (sort === 'Oldest First') {
-    sorted.sort((a, b) => a.rawDate - b.rawDate)
-  } else if (sort === 'Value High to Low') {
-    sorted.sort((a, b) => b.value - a.value)
-  } else if (sort === 'Value Low to High') {
-    sorted.sort((a, b) => a.value - b.value)
-  } else if (sort === 'No Asc') {
-    sorted.sort((a, b) => a.no - b.no)
-  } else if (sort === 'No Desc') {
-    sorted.sort((a, b) => b.no - a.no)
-  } else if (sort === 'Id Asc') {
-    sorted.sort((a, b) => a.id.localeCompare(b.id))
-  } else if (sort === 'Id Desc') {
-    sorted.sort((a, b) => b.id.localeCompare(a.id))
-  } else if (sort === 'Name Asc') {
-    sorted.sort((a, b) => a.type.localeCompare(b.type))
-  } else if (sort === 'Name Desc') {
-    sorted.sort((a, b) => b.type.localeCompare(a.type))
-  }
+  return paginate(filtered.sort(READING_COMPARATORS[sort]), params.page, params.limit || 10)
+}
 
-  const total = sorted.length
-  const totalPages = Math.max(1, Math.ceil(total / limit))
-  const currentPage = Math.min(page, totalPages)
-  const startIndex = (currentPage - 1) * limit
-  const pagedData = sorted.slice(startIndex, startIndex + limit)
+/* ────────────────────────────────────────────────────────────────────────
+ * 4. Tiện ích Xuất CSV theo chuẩn SRS
+ * ──────────────────────────────────────────────────────────────────────── */
 
-  return {
-    success: true,
-    total,
-    page: currentPage,
-    limit,
-    totalPages,
-    data: pagedData,
-  }
+function downloadCsv(filename: string, csvContent: string) {
+  // Thêm BOM UTF-8 để Microsoft Excel hiển thị tiếng Việt có dấu chuẩn xác
+  const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+export function exportDeviceActionsCsv(records: DeviceActionRecord[]) {
+  const header = 'STT,Mã bản ghi,Thời gian,Thiết bị,Hành động,Trạng thái,Người thực hiện\n'
+  const rows = records
+    .map((r, i) => `${i + 1},"${r.id}","${r.display_time}","${r.device_name}","${r.action}","${r.status}","${r.performed_by}"`)
+    .join('\n')
+  downloadCsv('lich_su_hoat_dong_iot_community.csv', header + rows)
 }
 
 export function exportIndividualReadingsCsv(records: IndividualSensorReading[]) {
   const header = 'NO,SENSOR ID,SENSOR NAME,VALUE,TIMESTAMP\n'
   const rows = records
-    .map(
-      (r) =>
-        `${r.no},"${r.id}","${r.type}","${r.formattedValue}","${r.timestamp}"`
-    )
+    .map((r) => `${r.no},"${r.id}","${r.type}","${r.formattedValue}","${r.timestamp}"`)
     .join('\n')
   downloadCsv('sensor_readings.csv', header + rows)
 }
-
