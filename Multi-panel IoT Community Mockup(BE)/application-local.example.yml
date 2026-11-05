@@ -1,0 +1,15 @@
+# Copy file nay thanh application-local.yml (cung thu muc, da .gitignore) va dien gia tri that.
+# Backend tu doc file nay khi chay tu thu muc Multi-panel IoT Community Mockup(BE).
+spring:
+  datasource:
+    username: root
+    password: <mat-khau-mysql>
+
+app:
+  jwt:
+    secret: <chuoi-ngau-nhien-it-nhat-32-ky-tu>
+
+mqtt:
+  broker-url: tcp://localhost:1884
+  username: <mqtt-username-giong-firmware>
+  password: <mqtt-password-giong-firmware>

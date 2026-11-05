@@ -1,0 +1,106 @@
+# ============================================================
+#  IoT Community Hub - Backend (Spring Boot)
+#  Moi gia tri deu co the ghi de bang bien moi truong, vd:
+#    DB_PASSWORD=xxx MQTT_BROKER_URL=tcp://192.168.1.10:1884 mvn spring-boot:run
+#  Thong tin bi mat (mat khau DB, MQTT, JWT secret) KHONG de o day:
+#  copy application-local.example.yml -> application-local.yml (da .gitignore) roi dien vao.
+# ============================================================
+server:
+  port: ${SERVER_PORT:3000}          # SRS B.1: http://localhost:3000/api
+
+spring:
+  application:
+    name: iot-community-hub
+  config:
+    import: optional:file:./application-local.yml
+  datasource:
+    # MySQL cai tren may (khong dung Docker). Session JDBC dat UTC de cot TIMESTAMP luon la UTC.
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:iot_community_hub}?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none                 # Schema do SchemaInitializer quan ly (schema.sql)
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    serialization:
+      write-dates-as-timestamps: false
+    generator:
+      write-bigdecimal-as-plain: true
+    time-zone: UTC
+  task:
+    scheduling:
+      pool:
+        size: 4                      # @Scheduled, lich trinh LED, timeout device_response, simulator
+  # Gui email quen mat khau: dat SPRING_MAIL_HOST, SPRING_MAIL_PORT, SPRING_MAIL_USERNAME,
+  # SPRING_MAIL_PASSWORD (vd. smtp.gmail.com / 587 / app password). Neu khong cau hinh,
+  # lien ket dat lai mat khau se duoc in ra log.
+  mail:
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+app:
+  timezone: ${APP_TIMEZONE:Asia/Ho_Chi_Minh}   # Dung de tinh "hom nay" va nhan bieu do
+  frontend-url: ${FRONTEND_URL:http://localhost:8443}
+  backend-url: ${BACKEND_URL:http://localhost:3000}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:*,http://127.0.0.1:*}
+  jwt:
+    # >= 32 ky tu. Dat trong application-local.yml hoac bien moi truong JWT_SECRET.
+    secret: ${JWT_SECRET:}
+    access-token-ttl: 24h
+    refresh-token-ttl: 30d
+  password-reset-ttl: 15m
+  mail-from: ${MAIL_FROM:no-reply@iot-community.vn}
+  admin:                               # Tai khoan admin tao san khi DB chua co admin nao
+    username: ${ADMIN_USERNAME:admin}
+    password: ${ADMIN_PASSWORD:admin123}
+    full-name: Phạm Minh Đức
+    email: ${ADMIN_EMAIL:admin@iot-community.vn}
+    student-code: B23DCCN185
+  sensor:
+    offline-after: 30s                 # Qua thoi gian nay khong co du lieu -> "mat tin hieu"
+  device:
+    response-timeout: 5s               # SRS: khuyen nghi 5 giay, qua han tra 408
+    wait-for-response: true            # PUT control cho device_response truoc khi tra ket qua
+  simulator:
+    # true = khong can phan cung/broker: backend tu sinh du lieu cam bien va tu xac nhan lenh LED.
+    enabled: ${SIMULATOR_ENABLED:false}
+    interval-ms: 5000
+  oauth:
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+      client-secret: ${GOOGLE_CLIENT_SECRET:}
+    github:
+      client-id: ${GITHUB_CLIENT_ID:}
+      client-secret: ${GITHUB_CLIENT_SECRET:}
+
+mqtt:
+  enabled: ${MQTT_ENABLED:true}
+  # Firmware dang tro toi broker 172.20.10.12:1884 (chinh may chay broker).
+  broker-url: ${MQTT_BROKER_URL:tcp://localhost:1884}
+  username: ${MQTT_USERNAME:}
+  password: ${MQTT_PASSWORD:}
+  client-id: ${MQTT_CLIENT_ID:iot-hub-backend}
+  qos: 1
+  reconnect-interval: 5s
+  topics:
+    sensor-data: sensor_data
+    device-control: device_control
+    device-response: device_response
+
+logging:
+  level:
+    com.iothub: INFO
